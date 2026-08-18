@@ -6,6 +6,9 @@ enum BZZTBackendIncomingMessage: Equatable {
     case gameStart(BZZTBackendPublicState)
     case roundPrepare(BZZTBackendRoundPreparePayload)
     case roundStart(BZZTBackendRoundStartPayload)
+    case riskQuestionStart(BZZTBackendRoundStartPayload)
+    case riskWagerStatus(BZZTBackendRiskWagerStatusPayload)
+    case powerUpResult(BZZTBackendPowerUpResultPayload)
     case answerLocked(roundID: String)
     case roundEnd(BZZTBackendRoundEndPayload)
     case scoreUpdate([String: Int])
@@ -43,10 +46,31 @@ struct BZZTBackendOutgoingMessage: Encodable, Equatable {
         BZZTBackendOutgoingMessage(type: "REMATCH")
     }
 
-    static func submitAnswer(roundID: String, answerID: String) -> BZZTBackendOutgoingMessage {
-        BZZTBackendOutgoingMessage(type: "SUBMIT_ANSWER", payload: [
+    static func submitAnswer(roundID: String, answerID: String, wager: Int? = nil, powerUp: String? = nil) -> BZZTBackendOutgoingMessage {
+        var payload: [String: BZZTJSONValue] = [
             "round_id": .string(roundID),
             "answer_id": .string(answerID)
+        ]
+        if let wager {
+            payload["wager"] = .int(wager)
+        }
+        if let powerUp {
+            payload["power_up"] = .string(powerUp)
+        }
+        return BZZTBackendOutgoingMessage(type: "SUBMIT_ANSWER", payload: payload)
+    }
+
+    static func submitWager(roundID: String, wager: Int) -> BZZTBackendOutgoingMessage {
+        BZZTBackendOutgoingMessage(type: "SUBMIT_WAGER", payload: [
+            "round_id": .string(roundID),
+            "wager": .int(wager)
+        ])
+    }
+
+    static func usePowerUp(roundID: String, powerUp: String) -> BZZTBackendOutgoingMessage {
+        BZZTBackendOutgoingMessage(type: "USE_POWER_UP", payload: [
+            "round_id": .string(roundID),
+            "power_up": .string(powerUp)
         ])
     }
 
@@ -142,6 +166,12 @@ enum BZZTBackendMessageDecoder {
             return .roundPrepare(try decodePayload(BZZTBackendRoundPreparePayload.self, from: payloadData))
         case "ROUND_START":
             return .roundStart(try decodePayload(BZZTBackendRoundStartPayload.self, from: payloadData))
+        case "RISK_QUESTION_START":
+            return .riskQuestionStart(try decodePayload(BZZTBackendRoundStartPayload.self, from: payloadData))
+        case "RISK_WAGER_STATUS":
+            return .riskWagerStatus(try decodePayload(BZZTBackendRiskWagerStatusPayload.self, from: payloadData))
+        case "POWER_UP_RESULT":
+            return .powerUpResult(try decodePayload(BZZTBackendPowerUpResultPayload.self, from: payloadData))
         case "ANSWER_LOCKED":
             let payload = try decodePayload(RoundIDPayload.self, from: payloadData)
             return .answerLocked(roundID: payload.roundID)

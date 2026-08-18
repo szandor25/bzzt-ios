@@ -13,6 +13,8 @@ enum BZZTGamePhase {
     case question
     case trueFalse
     case risk
+    case leaderHunt
+    case finalLadder
     case buzz
     case roundResult(BZZTRoundResult)
     case scoreboard
@@ -52,7 +54,7 @@ enum BZZTGameMode: String, CaseIterable, Identifiable {
     var details: String {
         switch self {
         case .party:
-            "Gra miesza różne rundy: ABCD, prawda/fałsz, audio, obrazki, ryzyko, power-upy, polowanie na lidera i finał. Najlepszy wybór dla kilku osób przy wspólnej zabawie."
+            "Gra miesza różne rundy: ABCD, prawda/fałsz, ryzyko, power-upy, polowanie na lidera i finał. Najlepszy wybór dla kilku osób przy wspólnej zabawie."
         case .classic:
             "Głównie pytania wiedzy, mniej losowych mechanik i mniej power-upów. Dobry wybór do rodzinnego grania albo bardziej poważnego quizu."
         case .quick:
@@ -79,6 +81,116 @@ enum BZZTGameMode: String, CaseIterable, Identifiable {
             "graduationcap.fill"
         case .quick:
             "timer"
+        }
+    }
+}
+
+enum BZZTRoundKind: Equatable {
+    case multipleChoice
+    case trueFalse
+    case risk
+    case leaderHunt
+    case finalLadder
+    case buzz
+
+    init(backendValue: String?) {
+        switch backendValue?.lowercased() {
+        case "true_false", "truefalse", "prawda_falsz":
+            self = .trueFalse
+        case "risk", "ryzyko":
+            self = .risk
+        case "leader_hunt", "hunt_leader", "polowanie_na_lidera":
+            self = .leaderHunt
+        case "final_ladder", "final", "finale":
+            self = .finalLadder
+        case "buzz":
+            self = .buzz
+        default:
+            self = .multipleChoice
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .multipleChoice:
+            "ABCD"
+        case .trueFalse:
+            "PRAWDA / FAŁSZ"
+        case .risk:
+            "RYZYKO"
+        case .leaderHunt:
+            "POLOWANIE NA LIDERA"
+        case .finalLadder:
+            "FINAŁ DRABINA"
+        case .buzz:
+            "BZZT!"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .multipleChoice:
+            "Wybierz jedną poprawną odpowiedź."
+        case .trueFalse:
+            "Szybka decyzja: prawda albo fałsz."
+        case .risk:
+            "Najpierw stawka, potem pytanie."
+        case .leaderHunt:
+            "Lider jest celem, reszta goni z bonusem."
+        case .finalLadder:
+            "Poprawne odpowiedzi przesuwają graczy po torze finałowym."
+        case .buzz:
+            "Tryb BUZZ jest ukryty w obecnej wersji Party."
+        }
+    }
+}
+
+enum BZZTPowerUp: String, CaseIterable, Identifiable {
+    case fiftyFifty = "50/50"
+    case extraTime = "+2 sek."
+    case doublePoints = "x2"
+    case shield = "Tarcza"
+
+    var id: String { rawValue }
+
+    init?(backendValue: String) {
+        switch backendValue {
+        case "fifty_fifty":
+            self = .fiftyFifty
+        case "extra_time":
+            self = .extraTime
+        case "double_points":
+            self = .doublePoints
+        case "shield":
+            self = .shield
+        default:
+            return nil
+        }
+    }
+
+    var backendValue: String {
+        switch self {
+        case .fiftyFifty:
+            "fifty_fifty"
+        case .extraTime:
+            "extra_time"
+        case .doublePoints:
+            "double_points"
+        case .shield:
+            "shield"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .fiftyFifty:
+            "circle.lefthalf.filled"
+        case .extraTime:
+            "timer"
+        case .doublePoints:
+            "multiply.circle.fill"
+        case .shield:
+            "shield.fill"
         }
     }
 }
@@ -228,6 +340,15 @@ struct BZZTRoundResult: Equatable {
     let points: Int
     let correctAnswer: String
     let explanation: String
+    var roundNote: String?
+
+    init(isCorrect: Bool, points: Int, correctAnswer: String, explanation: String, roundNote: String? = nil) {
+        self.isCorrect = isCorrect
+        self.points = points
+        self.correctAnswer = correctAnswer
+        self.explanation = explanation
+        self.roundNote = roundNote
+    }
 }
 
 extension BZZTQuestion {

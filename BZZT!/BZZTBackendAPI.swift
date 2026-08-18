@@ -191,6 +191,34 @@ struct BZZTBackendNextRoundStatusPayload: Decodable, Equatable {
     }
 }
 
+struct BZZTBackendRiskWagerStatusPayload: Decodable, Equatable {
+    let roundID: String
+    let ready: [String]
+    let waitingFor: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case roundID = "round_id"
+        case ready
+        case waitingFor = "waiting_for"
+    }
+}
+
+struct BZZTBackendPowerUpResultPayload: Decodable, Equatable {
+    let roundID: String
+    let powerUp: String
+    let accepted: Bool
+    let removedAnswerIDs: [String]
+    let reason: String?
+
+    enum CodingKeys: String, CodingKey {
+        case roundID = "round_id"
+        case powerUp = "power_up"
+        case accepted
+        case removedAnswerIDs = "removed_answer_ids"
+        case reason
+    }
+}
+
 struct BZZTBackendGameEndPayload: Decodable, Equatable {
     let ranking: [BZZTBackendRankingPlayer]
 }

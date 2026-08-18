@@ -142,6 +142,90 @@ struct BZZT_BackendTests {
         #expect(payload.waitingFor == ["session-b", "session-c"])
     }
 
+    @Test @MainActor func riskWagerStatusMessageDecodesReadyAndWaitingLists() throws {
+        let json = #"""
+        {
+          "type": "RISK_WAGER_STATUS",
+          "payload": {
+            "round_id": "r-risk",
+            "ready": ["session-a"],
+            "waiting_for": ["session-b"]
+          }
+        }
+        """#.data(using: .utf8)!
+
+        let message = try BZZTBackendMessageDecoder.decode(json)
+
+        guard case .riskWagerStatus(let payload) = message else {
+            Issue.record("Expected RISK_WAGER_STATUS payload")
+            return
+        }
+        #expect(payload.roundID == "r-risk")
+        #expect(payload.ready == ["session-a"])
+        #expect(payload.waitingFor == ["session-b"])
+    }
+
+    @Test @MainActor func riskQuestionStartMessageDecodesRoundStartPayload() throws {
+        let json = #"""
+        {
+          "type": "RISK_QUESTION_START",
+          "payload": {
+            "round_id": "r-risk",
+            "round_index": 3,
+            "question_type": "risk",
+            "question": {
+              "id": "geo_000010",
+              "text": "Jaka jest stolica Australii?",
+              "audio_url": null,
+              "answers": [
+                {"id": "a1", "label": "A", "text": "Sydney"},
+                {"id": "a2", "label": "B", "text": "Melbourne"}
+              ],
+              "time_limit": 10,
+              "base_points": 500
+            },
+            "server_start_ms": 12345,
+            "duration": 10.0
+          }
+        }
+        """#.data(using: .utf8)!
+
+        let message = try BZZTBackendMessageDecoder.decode(json)
+
+        guard case .riskQuestionStart(let payload) = message else {
+            Issue.record("Expected RISK_QUESTION_START payload")
+            return
+        }
+        #expect(payload.roundID == "r-risk")
+        #expect(payload.questionType == "risk")
+        #expect(payload.question.answers[0].id == "a1")
+    }
+
+    @Test @MainActor func powerUpResultMessageDecodesRemovedAnswers() throws {
+        let json = #"""
+        {
+          "type": "POWER_UP_RESULT",
+          "payload": {
+            "round_id": "r1",
+            "power_up": "fifty_fifty",
+            "accepted": true,
+            "removed_answer_ids": ["a1", "a3"],
+            "reason": null
+          }
+        }
+        """#.data(using: .utf8)!
+
+        let message = try BZZTBackendMessageDecoder.decode(json)
+
+        guard case .powerUpResult(let payload) = message else {
+            Issue.record("Expected POWER_UP_RESULT payload")
+            return
+        }
+        #expect(payload.powerUp == "fifty_fifty")
+        #expect(payload.accepted)
+        #expect(payload.removedAnswerIDs == ["a1", "a3"])
+    }
+
     @Test @MainActor func rematchStartedMessageDecodesPublicState() throws {
         let json = #"""
         {

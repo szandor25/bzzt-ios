@@ -44,6 +44,16 @@ struct RoundResultView: View {
                             .font(.body.weight(.semibold))
                             .foregroundStyle(Color.bzztTextSecondary)
                             .fixedSize(horizontal: false, vertical: true)
+
+                        if let roundNote = result.roundNote {
+                            Divider()
+                                .overlay(Color.bzztDivider)
+
+                            Text(roundNote)
+                                .font(.callout.weight(.black))
+                                .foregroundStyle(Color.bzztElectric)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
             }
 

@@ -55,6 +55,10 @@ struct ContentView: View {
             TrueFalseRoundView(store: store)
         case .risk:
             RiskRoundView(store: store)
+        case .leaderHunt:
+            LeaderHuntRoundView(store: store)
+        case .finalLadder:
+            FinalLadderRoundView(store: store)
         case .buzz:
             BuzzRoundView(store: store)
         case .roundResult(let result):

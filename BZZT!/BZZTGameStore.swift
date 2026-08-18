@@ -18,6 +18,14 @@ final class BZZTGameStore {
     var selectedAnswerID: BZZTAnswerOption.ID?
     var selectedTruthAnswer: Bool?
     var selectedWager = 250
+    var isRiskWagerLocked = false
+    var isRiskQuestionVisible = true
+    var riskWagerReadySessionIDs: Set<String> = []
+    var riskWagerWaitingSessionIDs: Set<String> = []
+    var selectedPowerUp: BZZTPowerUp?
+    var usedPowerUps: Set<BZZTPowerUp> = []
+    var eliminatedAnswerIDs: Set<BZZTAnswerOption.ID> = []
+    var powerUpMessage: String?
     var buzzerState: BZZTBuzzerState = .waiting
     var connectionState: BZZTConnectionState = .offline
     var connectionMessage: String?
@@ -51,6 +59,18 @@ final class BZZTGameStore {
     private var deferredRoundTransitionTask: Task<Void, Never>?
     private var pendingRoundTransition: (@MainActor () -> Void)?
     private let resultDisplayDuration: TimeInterval = 60
+
+    var currentRoundKind: BZZTRoundKind {
+        BZZTRoundKind(backendValue: currentQuestionType)
+    }
+
+    var canUsePowerUps: Bool {
+        roomSettings.mode == .party && selectedAnswerID == nil && usedPowerUps.count < 2
+    }
+
+    var leaderName: String {
+        sortedPlayers.first?.name ?? "Lider"
+    }
 
     init() {
         let defaults = UserDefaults.standard
@@ -95,6 +115,18 @@ final class BZZTGameStore {
 
     var nextRoundWaitingNames: [String] {
         nextRoundWaitingSessionIDs.compactMap { sessionID in
+            players.first { player in
+                backendSessionIDsByPlayerID[player.id] == sessionID
+            }?.name
+        }
+    }
+
+    var riskWagerReadyCount: Int {
+        riskWagerReadySessionIDs.count
+    }
+
+    var riskWagerWaitingNames: [String] {
+        riskWagerWaitingSessionIDs.compactMap { sessionID in
             players.first { player in
                 backendSessionIDsByPlayerID[player.id] == sessionID
             }?.name
@@ -244,7 +276,7 @@ final class BZZTGameStore {
         }
 
         Task {
-            await sendWebSocket(.submitAnswer(roundID: currentRoundID, answerID: option.id))
+            await sendWebSocket(.submitAnswer(roundID: currentRoundID, answerID: option.id, powerUp: selectedPowerUp?.backendValue))
         }
     }
 
@@ -280,12 +312,63 @@ final class BZZTGameStore {
     }
 
     func selectWager(_ wager: Int) {
+        guard !isRiskWagerLocked else { return }
         selectedWager = wager
+    }
+
+    func confirmRiskWager() {
+        isRiskWagerLocked = true
+        guard isOnlineMode else {
+            isRiskQuestionVisible = true
+            return
+        }
+
+        guard let currentRoundID else { return }
+        Task {
+            await sendWebSocket(.submitWager(roundID: currentRoundID, wager: selectedWager))
+        }
     }
 
     func submitRiskAnswer(_ option: BZZTAnswerOption) {
         guard selectedAnswerID == nil else { return }
-        sendLocal(.submitRisk(answerID: option.id, wager: selectedWager))
+        guard isRiskWagerLocked else {
+            connectionMessage = "Najpierw zatwierdź stawkę."
+            return
+        }
+
+        guard isOnlineMode else {
+            sendLocal(.submitRisk(answerID: option.id, wager: selectedWager))
+            return
+        }
+
+        selectedAnswerID = option.id
+        guard let currentRoundID else { return }
+        Task {
+            await sendWebSocket(.submitAnswer(roundID: currentRoundID, answerID: option.id, wager: selectedWager, powerUp: selectedPowerUp?.backendValue))
+        }
+    }
+
+    func submitTrueFalseOption(_ option: BZZTAnswerOption) {
+        guard selectedAnswerID == nil else { return }
+        submitAnswer(option)
+    }
+
+    func usePowerUp(_ powerUp: BZZTPowerUp) {
+        guard canUsePowerUps, !usedPowerUps.contains(powerUp) else { return }
+        guard isOnlineMode else {
+            applyAcceptedPowerUp(powerUp, removedAnswerIDs: [])
+            return
+        }
+
+        guard let currentRoundID else { return }
+        powerUpMessage = "Aktywuję \(powerUp.rawValue)..."
+        Task {
+            await sendWebSocket(.usePowerUp(roundID: currentRoundID, powerUp: powerUp.backendValue))
+        }
+    }
+
+    func visibleOptions(for question: BZZTQuestion) -> [BZZTAnswerOption] {
+        question.options.filter { !eliminatedAnswerIDs.contains($0.id) }
     }
 
     func showBuzzRound() {
@@ -386,6 +469,14 @@ final class BZZTGameStore {
         selectedAnswerID = nil
         selectedTruthAnswer = nil
         selectedWager = 250
+        isRiskWagerLocked = false
+        isRiskQuestionVisible = true
+        riskWagerReadySessionIDs = []
+        riskWagerWaitingSessionIDs = []
+        selectedPowerUp = nil
+        usedPowerUps = []
+        eliminatedAnswerIDs = []
+        powerUpMessage = nil
         buzzerState = .waiting
         phase = .lobby
     }
@@ -399,6 +490,14 @@ final class BZZTGameStore {
         selectedAnswerID = nil
         selectedTruthAnswer = nil
         selectedWager = 250
+        isRiskWagerLocked = false
+        isRiskQuestionVisible = true
+        riskWagerReadySessionIDs = []
+        riskWagerWaitingSessionIDs = []
+        selectedPowerUp = nil
+        usedPowerUps = []
+        eliminatedAnswerIDs = []
+        powerUpMessage = nil
         buzzerState = .waiting
         currentRoundID = nil
         currentQuestionType = nil
@@ -427,6 +526,14 @@ final class BZZTGameStore {
         selectedAnswerID = nil
         selectedTruthAnswer = nil
         selectedWager = 250
+        isRiskWagerLocked = false
+        isRiskQuestionVisible = true
+        riskWagerReadySessionIDs = []
+        riskWagerWaitingSessionIDs = []
+        selectedPowerUp = nil
+        usedPowerUps = []
+        eliminatedAnswerIDs = []
+        powerUpMessage = nil
         joinCode = ""
         connectionMessage = nil
         connectionState = .offline
@@ -554,6 +661,15 @@ final class BZZTGameStore {
                 self.applyRoundStart(payload)
             }
 
+        case .riskQuestionStart(let payload):
+            applyRiskQuestionStart(payload)
+
+        case .riskWagerStatus(let payload):
+            applyRiskWagerStatus(payload)
+
+        case .powerUpResult(let payload):
+            applyPowerUpResult(payload)
+
         case .answerLocked:
             break
 
@@ -633,6 +749,9 @@ final class BZZTGameStore {
         currentQuestionType = payload.questionType
         pendingBuzzAnswerID = nil
         selectedAnswerID = nil
+        selectedPowerUp = nil
+        eliminatedAnswerIDs = []
+        powerUpMessage = nil
         buzzerState = .disabled
         resultVisibleUntil = nil
         resultAdvanceDeadline = nil
@@ -641,8 +760,53 @@ final class BZZTGameStore {
         nextRoundWaitingSessionIDs = []
         pendingRoundTransition = nil
         currentQuestion = payload.question.bzztQuestion(index: payload.roundIndex + 1, total: backendRoundCount, baseURL: backendAPI.configuration.baseURL)
-        phase = .question
+        trueFalsePrompt = BZZTTrueFalsePrompt(
+            statement: currentQuestion.text,
+            correctAnswer: true,
+            explanation: currentQuestion.explanation
+        )
+        riskPrompt = BZZTRiskPrompt(question: currentQuestion, wagers: [100, 250, 500, 1000])
+        isRiskWagerLocked = currentRoundKind != .risk
+        isRiskQuestionVisible = currentRoundKind != .risk
+        riskWagerReadySessionIDs = []
+        riskWagerWaitingSessionIDs = []
+        phase = phaseForCurrentRound()
+        if currentRoundKind != .risk {
+            playAudio(from: currentQuestion.audioURL)
+        }
+    }
+
+    private func applyRiskQuestionStart(_ payload: BZZTBackendRoundStartPayload) {
+        guard payload.roundID == currentRoundID else { return }
+        currentQuestionType = payload.questionType
+        selectedAnswerID = nil
+        selectedPowerUp = nil
+        eliminatedAnswerIDs = []
+        powerUpMessage = nil
+        currentQuestion = payload.question.bzztQuestion(index: payload.roundIndex + 1, total: backendRoundCount, baseURL: backendAPI.configuration.baseURL)
+        riskPrompt = BZZTRiskPrompt(question: currentQuestion, wagers: [100, 250, 500, 1000])
+        isRiskQuestionVisible = true
+        phase = .risk
         playAudio(from: currentQuestion.audioURL)
+    }
+
+    private func applyRiskWagerStatus(_ payload: BZZTBackendRiskWagerStatusPayload) {
+        guard payload.roundID == currentRoundID else { return }
+        riskWagerReadySessionIDs = Set(payload.ready)
+        riskWagerWaitingSessionIDs = Set(payload.waitingFor)
+        isRiskWagerLocked = localSessionID.map { riskWagerReadySessionIDs.contains($0) } ?? isRiskWagerLocked
+    }
+
+    private func applyPowerUpResult(_ payload: BZZTBackendPowerUpResultPayload) {
+        guard payload.roundID == currentRoundID else { return }
+        guard let powerUp = BZZTPowerUp(backendValue: payload.powerUp) else { return }
+
+        if payload.accepted {
+            applyAcceptedPowerUp(powerUp, removedAnswerIDs: payload.removedAnswerIDs)
+            return
+        }
+
+        powerUpMessage = payload.reason ?? "Power-up nie może być teraz użyty."
     }
 
     private func showAfterResultMinimum(_ action: @escaping @MainActor () -> Void) {
@@ -735,6 +899,7 @@ final class BZZTGameStore {
         }
         let wasCorrect = selectedAnswerID == payload.correctAnswerID || (localSubmission?.isCorrect ?? false)
         let points = localSubmission?.points ?? 0
+        let note = resultNote(points: points, wasCorrect: wasCorrect)
 
         currentQuestion = BZZTQuestion(
             id: currentQuestion.id,
@@ -754,8 +919,72 @@ final class BZZTGameStore {
             isCorrect: wasCorrect,
             points: points,
             correctAnswer: correctText,
-            explanation: payload.explanation ?? "Wynik i punkty liczy backend."
+            explanation: payload.explanation ?? "Wynik i punkty liczy backend.",
+            roundNote: note
         )
+    }
+
+    private func phaseForCurrentRound() -> BZZTGamePhase {
+        switch currentRoundKind {
+        case .multipleChoice:
+            .question
+        case .trueFalse:
+            .trueFalse
+        case .risk:
+            .risk
+        case .leaderHunt:
+            .leaderHunt
+        case .finalLadder:
+            .finalLadder
+        case .buzz:
+            .question
+        }
+    }
+
+    private func resultNote(points: Int, wasCorrect: Bool) -> String? {
+        switch currentRoundKind {
+        case .risk:
+            wasCorrect ? "Ryzyko opłacone: stawka została dodana." : "Ryzyko nie weszło: stawka została odjęta."
+        case .leaderHunt:
+            wasCorrect ? "Trafienie w polowaniu pomaga dogonić lidera." : "Lider dostał szansę na obronę przewagi."
+        case .finalLadder:
+            points > 0 ? "Ruch na drabinie finałowej został zaliczony." : "Brak awansu na torze finałowym."
+        default:
+            selectedPowerUp.map { "Użyty power-up: \($0.rawValue)." }
+        }
+    }
+
+    private func applyAcceptedPowerUp(_ powerUp: BZZTPowerUp, removedAnswerIDs: [String]) {
+        selectedPowerUp = powerUp
+        usedPowerUps.insert(powerUp)
+        powerUpMessage = powerUpMessage(for: powerUp)
+
+        if powerUp == .fiftyFifty {
+            if removedAnswerIDs.isEmpty {
+                eliminateTwoWrongAnswersLocally()
+            } else {
+                eliminatedAnswerIDs = Set(removedAnswerIDs)
+            }
+        }
+    }
+
+    private func powerUpMessage(for powerUp: BZZTPowerUp) -> String {
+        switch powerUp {
+        case .fiftyFifty:
+            "50/50 aktywne. Dwie błędne odpowiedzi ukryte."
+        case .extraTime:
+            "+2 sek. aktywne. Backend policzy odpowiedź z bonusem czasu."
+        case .doublePoints:
+            "Podwójne punkty aktywne dla tej odpowiedzi."
+        case .shield:
+            "Tarcza aktywna. Może ochronić przed stratą punktów."
+        }
+    }
+
+    private func eliminateTwoWrongAnswersLocally() {
+        guard let correctAnswerID = currentQuestion.correctAnswerID else { return }
+        let wrongAnswers = currentQuestion.options.filter { $0.id != correctAnswerID }
+        eliminatedAnswerIDs = Set(wrongAnswers.prefix(2).map(\.id))
     }
 
     private func handleOnlineError(_ error: Error) {
@@ -870,12 +1099,22 @@ final class BZZTGameStore {
         switch phase {
         case .question:
             selectedAnswerID = nil
+            selectedPowerUp = nil
+            eliminatedAnswerIDs = []
+            powerUpMessage = nil
             currentQuestion = .sample
         case .trueFalse:
             selectedTruthAnswer = nil
         case .risk:
             selectedAnswerID = nil
             selectedWager = 250
+            isRiskWagerLocked = false
+            isRiskQuestionVisible = false
+            riskWagerReadySessionIDs = []
+            riskWagerWaitingSessionIDs = []
+            selectedPowerUp = nil
+            eliminatedAnswerIDs = []
+            powerUpMessage = nil
             currentQuestion = riskPrompt.question
         case .buzz:
             buzzerState = .waiting
