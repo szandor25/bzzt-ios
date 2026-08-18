@@ -195,14 +195,6 @@ enum BZZTPowerUp: String, CaseIterable, Identifiable {
     }
 }
 
-enum BZZTGameLength: String, CaseIterable, Identifiable {
-    case twenty = "20 min"
-    case thirty = "30 min"
-    case unlimited = "Bez limitu"
-
-    var id: String { rawValue }
-}
-
 enum BZZTDifficulty: String, CaseIterable, Identifiable {
     case family = "Rodzinny"
     case normal = "Normalny"
@@ -213,7 +205,6 @@ enum BZZTDifficulty: String, CaseIterable, Identifiable {
 
 struct BZZTRoomSettings {
     var mode: BZZTGameMode = .party
-    var length: BZZTGameLength = .twenty
     var difficulty: BZZTDifficulty = .family
     var roundCount: Int = 6
 }

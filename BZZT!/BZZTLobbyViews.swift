@@ -86,7 +86,6 @@ struct CreateRoomView: View {
                 }
 
                 BZZTPanel {
-                    SettingsPicker(title: "Czas gry", selection: $store.roomSettings.length)
                     SettingsPicker(title: "Poziom", selection: $store.roomSettings.difficulty)
                 }
 
@@ -173,7 +172,6 @@ private struct RoomAdvancedSettingsView: View {
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(Color.bzztTextSecondary)
                             .fixedSize(horizontal: false, vertical: true)
-                        SettingsSummaryRow(title: "Czas gry", value: store.roomSettings.length.rawValue)
                         SettingsSummaryRow(title: "Poziom", value: store.roomSettings.difficulty.rawValue)
                     }
 
